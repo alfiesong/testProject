@@ -1,0 +1,643 @@
+1. add a line for new branch
+2. add 2nd line for new branch
+
+<!DOCTYPE allDataLoads SYSTEM "../../../../ariba/analytics/core/dataLoads.dtd">
+<allDataLoads>
+<dataLoad name="BOABuyerEMFExpenseIncreaseLoadBase">
+    <loadStages>
+        <aqlStage fromClause="config.java.us.emf.EMFForm
+			LEFT OUTER JOIN config.java.us.emf.PurchaseReason USING EMFForm.PurchaseReason
+			LEFT OUTER JOIN config.java.us.emf.EMFFormFinGrid USING EMFForm.FinancialGrid
+			JOIN config.java.us.emf.EMFFormFinGridDetailExpenseLineItem USING EMFFormFinGrid.ExpenseLineItems
+			LEFT OUTER JOIN config.java.us.emf.EMFFormFinGridDetails USING EMFFormFinGridDetailExpenseLineItem.FinancialGridDetails 
+			LEFT OUTER JOIN config.java.us.emf.EMFFormSplitAccounting USING EMFFormFinGridDetails.SplitAccounting 
+			LEFT OUTER JOIN ariba.core.CostCenter USING EMFFormSplitAccounting.CostCenter
+			LEFT OUTER JOIN ariba.core.Company USING EMFFormSplitAccounting.Company
+			LEFT OUTER JOIN ariba.user.core.User as Requester INCLUDE INACTIVE USING EMFForm.Requester
+			LEFT OUTER JOIN ariba.common.core.CommodityExportMapEntry INCLUDE INACTIVE USING EMFFormFinGridDetails.AccountType 
+			LEFT OUTER JOIN ariba.core.Account INCLUDE INACTIVE USING CommodityExportMapEntry.Account
+			LEFT OUTER JOIN ariba.core.Company AS HistoricCompany INCLUDE INACTIVE USING EMFForm.Company
+			LEFT OUTER JOIN ariba.core.CostCenter AS HistoricCostCenter INCLUDE INACTIVE USING EMFForm.CostCenter"
+		whereClause="StatusString = 'Approved'
+			and EMFFormFinGridDetailExpenseLineItem.LineType != 'Summary'"
+		incrementalClause="EMFForm.ApprovedDate &gt;= :IncrementalStartDate
+			 and EMFForm.ApprovedDate  &lt; :IncrementalEndDate"/>
+        <analysisStage destinationName="config.analytics.fact.BOAEMFLineItem"/>
+    </loadStages>
+    <fieldMappings>
+        <field name="EMFId">
+            <aqlMapping selectField="EMFForm.UniqueName"/>
+        </field>
+        <field name="LineNumber">
+            <aqlMapping selectField="EMFFormFinGridDetailExpenseLineItem.NumberInVector"/>
+        </field>
+        <field name="LookupType">
+            <aqlMapping selectField=" 'Expense Increase' "/>
+        </field>       
+        <field name="SplitAccountingKey">
+            <aqlMapping selectField="CostCenter.UniqueName || ':' || Company.UniqueName"/>
+        </field>
+        <field name="ProjectStartYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)"/>
+        </field>
+        <field name="LineType.GridType">
+            <aqlMapping selectField=" 'Expense Increase' "/>
+        </field>
+        <field name="LineType.LineType">
+            <aqlMapping selectField="EMFFormFinGridDetailExpenseLineItem.LineType"/>
+        </field>
+        <field name="LineType.ExpenseType">
+            <aqlMapping selectField="EMFFormFinGridDetails.ExpenseType"/>
+        </field>
+        <field name="LineType.Details">
+            <aqlMapping selectField="EMFFormFinGridDetails.Description"/>
+        </field>
+        <field name="ApprovedDate.Day">
+            <aqlMapping selectField="EMFForm.ApprovedDate"/>
+        </field>
+        <field name="Requester.UserId">
+            <aqlMapping selectField="Requester.UniqueName"/>
+        </field>
+        <field name="Requester.PasswordAdapter">
+            <aqlMapping selectField="Requester.PasswordAdapter"/>
+        </field>
+        <field name="ProjectName">
+            <aqlMapping selectField="EMFForm.Name"/>
+        </field>
+        <field name="ProjectDescription">
+            <aqlMapping selectField="EMFForm.ProjectDescription"/>
+        </field>
+        <field name="ProjectManager">
+            <aqlMapping selectField="EMFForm.ProjectManager"/>
+        </field>
+        <field name="PurchaseReason">
+            <aqlMapping selectField="PurchaseReason.Name"/>
+        </field>
+        <field name="SupplierName">
+            <aqlMapping selectField="EMFForm.SupplierName"/>
+        </field>
+        <field name="CostCenter.CostCenterId">
+            <aqlMapping selectField="CostCenter.UniqueName"/>
+        </field>
+        <field name="CostCenter.CompanyCode">
+            <aqlMapping selectField="Company.UniqueName"/>
+        </field>
+        <field name="FinancialHierarchy.CST_CTR">
+            <aqlMapping selectField="CostCenter.UniqueName"/>
+        </field>
+        <field name="FinancialHierarchy.CO_CD">
+            <aqlMapping selectField="Company.UniqueName"/>
+        </field>
+        <field name="Account.AccountId">
+            <aqlMapping selectField="Account.UniqueName"/>
+        </field>
+        <field name="Account.CompanyCode">
+            <aqlMapping selectField="Company.UniqueName"/>
+        </field>
+        <field name="ClarityId">
+            <aqlMapping selectField="EMFForm.ClarityNumber"/>
+        </field>
+        <field name="HostName">
+            <aqlMapping selectField="EMFForm.HostName"/>
+        </field>
+        <field name="EMFType">
+            <aqlMapping selectField="EMFForm.EMFType.UniqueName"/>
+        </field>
+        <field name="HistoricCompany">
+            <aqlMapping selectField="HistoricCompany.Name"/>
+        </field>
+        <field name="HistoricCostCenter">
+            <aqlMapping selectField="HistoricCostCenter.Name.PrimaryString"/>
+        </field>
+    </fieldMappings>
+</dataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseIncreaseCurrentYearAmountLoad" extendsLoad="BOABuyerEMFExpenseIncreaseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.CurrentAmount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseIncreaseYear2AmountLoad" extendsLoad="BOABuyerEMFExpenseIncreaseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year2Amount
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+1"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseIncreaseYear3AmountLoad" extendsLoad="BOABuyerEMFExpenseIncreaseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year3Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+2"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseIncreaseYear4AmountLoad" extendsLoad="BOABuyerEMFExpenseIncreaseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year4Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+3"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseIncreaseYear5AmountLoad" extendsLoad="BOABuyerEMFExpenseIncreaseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year5Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+4"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseIncreaseYear6AmountLoad" extendsLoad="BOABuyerEMFExpenseIncreaseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year6Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+5"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+
+
+<dataLoad name="BOABuyerEMFCapitalExpenseLoadBase">
+    <loadStages>
+        <aqlStage fromClause="config.java.us.emf.EMFForm
+			LEFT OUTER JOIN config.java.us.emf.PurchaseReason USING EMFForm.PurchaseReason
+			LEFT OUTER JOIN config.java.us.emf.EMFFormFinGrid USING EMFForm.FinancialGrid
+			JOIN config.java.us.emf.EMFFormFinGridDetailLineItem USING EMFFormFinGrid.LineItems
+			LEFT OUTER JOIN config.java.us.emf.EMFFormFinGridDetails USING EMFFormFinGridDetailLineItem.FinancialGridDetails 
+			LEFT OUTER JOIN config.java.us.emf.EMFFormSplitAccounting USING EMFFormFinGridDetails.SplitAccounting 
+			LEFT OUTER JOIN ariba.core.CostCenter USING EMFFormSplitAccounting.CostCenter
+			LEFT OUTER JOIN ariba.core.Company USING EMFFormSplitAccounting.Company
+			LEFT OUTER JOIN ariba.user.core.User as Requester INCLUDE INACTIVE USING EMFForm.Requester
+			LEFT OUTER JOIN ariba.common.core.CommodityExportMapEntry INCLUDE INACTIVE USING EMFFormFinGridDetails.AccountType
+			LEFT OUTER JOIN ariba.core.Account INCLUDE INACTIVE USING CommodityExportMapEntry.Account
+			LEFT OUTER JOIN ariba.core.Company AS HistoricCompany INCLUDE INACTIVE USING EMFForm.Company
+			LEFT OUTER JOIN ariba.core.CostCenter AS HistoricCostCenter INCLUDE INACTIVE USING EMFForm.CostCenter"
+		whereClause="StatusString = 'Approved'
+			and EMFFormFinGridDetailLineItem.LineType != 'Summary'"
+		incrementalClause="EMFForm.ApprovedDate &gt;= :IncrementalStartDate
+			and EMFForm.ApprovedDate  &lt; :IncrementalEndDate"/>
+        <analysisStage destinationName="config.analytics.fact.BOAEMFLineItem"/>
+    </loadStages>
+    <fieldMappings>
+        <field name="EMFId">
+            <aqlMapping selectField="EMFForm.UniqueName"/>
+        </field>
+        <field name="LineNumber">
+            <aqlMapping selectField="EMFFormFinGridDetailLineItem.NumberInVector"/>
+        </field>
+        <field name="LookupType">
+            <aqlMapping selectField=" 'Capital Expenditure / Total Lease Obligation' "/>
+        </field>       
+        <field name="SplitAccountingKey">
+            <aqlMapping selectField="CostCenter.UniqueName || ':' || Company.UniqueName"/>
+        </field>
+        <field name="ProjectStartYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)"/>
+        </field>
+        <field name="LineType.GridType">
+            <aqlMapping selectField=" 'Capital Expenditure / Total Lease Obligation' "/>
+        </field>
+        <field name="LineType.LineType">
+            <aqlMapping selectField="EMFFormFinGridDetailLineItem.LineType"/>
+        </field>
+        <field name="LineType.ExpenseType">
+            <aqlMapping selectField="EMFFormFinGridDetails.CapitalExpenseType"/>
+        </field>
+        <field name="LineType.Details">
+            <aqlMapping selectField="EMFFormFinGridDetails.Description"/>
+        </field>
+        <field name="ApprovedDate.Day">
+            <aqlMapping selectField="EMFForm.ApprovedDate"/>
+        </field>
+        <field name="Requester.UserId">
+            <aqlMapping selectField="Requester.UniqueName"/>
+        </field>
+        <field name="Requester.PasswordAdapter">
+            <aqlMapping selectField="Requester.PasswordAdapter"/>
+        </field>
+        <field name="ProjectName">
+            <aqlMapping selectField="EMFForm.Name"/>
+        </field>
+        <field name="ProjectDescription">
+            <aqlMapping selectField="EMFForm.ProjectDescription"/>
+        </field>
+        <field name="ProjectManager">
+            <aqlMapping selectField="EMFForm.ProjectManager"/>
+        </field>
+        <field name="PurchaseReason">
+            <aqlMapping selectField="PurchaseReason.Name"/>
+        </field>
+        <field name="SupplierName">
+            <aqlMapping selectField="EMFForm.SupplierName"/>
+        </field>
+        <field name="CostCenter.CostCenterId">
+            <aqlMapping selectField="CostCenter.UniqueName"/>
+        </field>
+        <field name="CostCenter.CompanyCode">
+            <aqlMapping selectField="Company.UniqueName"/>
+        </field>
+        <field name="FinancialHierarchy.CST_CTR">
+            <aqlMapping selectField="CostCenter.UniqueName"/>
+        </field>
+        <field name="FinancialHierarchy.CO_CD">
+            <aqlMapping selectField="Company.UniqueName"/>
+        </field>
+        <field name="Account.AccountId">
+            <aqlMapping selectField="Account.UniqueName"/>
+        </field>
+        <field name="Account.CompanyCode">
+            <aqlMapping selectField="Company.UniqueName"/>
+        </field>
+        <field name="ClarityId">
+            <aqlMapping selectField="EMFForm.ClarityNumber"/>
+        </field>
+        <field name="HostName">
+            <aqlMapping selectField="EMFForm.HostName"/>
+        </field>
+        <field name="EMFType">
+            <aqlMapping selectField="EMFForm.EMFType.UniqueName"/>
+        </field>
+        <field name="HistoricCompany">
+            <aqlMapping selectField="HistoricCompany.Name"/>
+        </field>
+        <field name="HistoricCostCenter">
+            <aqlMapping selectField="HistoricCostCenter.Name.PrimaryString"/>
+        </field>
+    </fieldMappings>
+</dataLoad>
+
+
+<derivedDataLoad name="BOABuyerEMFCapitalExpenseCurrentYearAmountLoad" extendsLoad="BOABuyerEMFCapitalExpenseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+				JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+				JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.CurrentAmount 
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFCapitalExpenseYear2AmountLoad" extendsLoad="BOABuyerEMFCapitalExpenseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year2Amount
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+1"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFCapitalExpenseYear3AmountLoad" extendsLoad="BOABuyerEMFCapitalExpenseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year3Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+2"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFCapitalExpenseYear4AmountLoad" extendsLoad="BOABuyerEMFCapitalExpenseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year4Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+3"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFCapitalExpenseYear5AmountLoad" extendsLoad="BOABuyerEMFCapitalExpenseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year5Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+4"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFCapitalExpenseYear6AmountLoad" extendsLoad="BOABuyerEMFCapitalExpenseLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as SplitLineAmount USING EMFFormSplitAccounting.LineAmount
+			JOIN ariba.basic.core.Money as LineAmount USING EMFFormSplitAccounting.Amount
+			JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridDetails.Year6Amount 
+			JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="CASE SplitLineAmount.ApproxAmountInBaseCurrency when 0 then LineAmount.ApproxAmountInBaseCurrency ELSE CASE LineAmount.ApproxAmountInBaseCurrency when 0 then Amount.Amount ELSE Amount.Amount*(LineAmount.ApproxAmountInBaseCurrency/SplitLineAmount.ApproxAmountInBaseCurrency) END END"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+5"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+
+
+<dataLoad name="BOABuyerEMFExpenseSummaryLoadBase">
+    <loadStages>
+        <aqlStage fromClause="config.java.us.emf.EMFForm
+			LEFT OUTER JOIN config.java.us.emf.PurchaseReason USING EMFForm.PurchaseReason
+			LEFT OUTER JOIN config.java.us.emf.EMFFormFinGrid USING EMFForm.FinancialGrid
+			LEFT OUTER JOIN config.java.us.emf.EMFFormFinGridSummaryLineItem USING EMFFormFinGrid.SummaryLineItems 
+			LEFT OUTER JOIN ariba.user.core.User as Requester INCLUDE INACTIVE USING EMFForm.Requester
+			LEFT OUTER JOIN ariba.core.Company AS HistoricCompany INCLUDE INACTIVE USING EMFForm.Company
+			LEFT OUTER JOIN ariba.core.CostCenter AS HistoricCostCenter INCLUDE INACTIVE USING EMFForm.CostCenter"
+		whereClause="StatusString = 'Approved'"
+		incrementalClause="EMFForm.ApprovedDate &gt;= :IncrementalStartDate
+			 and EMFForm.ApprovedDate  &lt; :IncrementalEndDate"/>
+        <analysisStage destinationName="config.analytics.fact.BOAEMFLineItem"/>
+    </loadStages>
+    <fieldMappings>
+        <field name="EMFId">
+            <aqlMapping selectField="EMFForm.UniqueName"/>
+        </field>
+        <field name="LineNumber">
+            <aqlMapping selectField="CASE EMFFormFinGridSummaryLineItem.LineNumber WHEN NULL THEN CASE EMFFormFinGridSummaryLineItem.Description WHEN 'ET&amp;D Funding' THEN 1 WHEN 'Business Partner' THEN 2 WHEN 'Transition' THEN 3 WHEN 'TOTAL NET EXPENSE' THEN 7 WHEN 'Total Expense Summary' THEN 6 WHEN 'Corporate Initiative' THEN 4 ELSE 5 END ELSE EMFFormFinGridSummaryLineItem.LineNumber END"/>
+        </field>
+        <field name="LookupType">
+            <aqlMapping selectField=" 'Expense Summary and Expense Reduction' "/>
+        </field>
+        <field name="SplitAccountingKey">
+            <aqlMapping selectField=" '' "/>
+        </field>
+        <field name="ProjectStartYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)"/>
+        </field>
+        <field name="LineType.GridType">
+            <aqlMapping selectField=" 'Expense Summary and Expense Reduction' "/>
+        </field>
+        <field name="LineType.LineType">
+            <aqlMapping selectField="EMFFormFinGridSummaryLineItem.LineType"/>
+        </field>
+        <field name="LineType.ExpenseType">
+            <aqlMapping selectField="CASE EMFFormFinGridSummaryLineItem.LineNumber WHEN NULL THEN CASE EMFFormFinGridSummaryLineItem.Description WHEN 'ET&amp;D Funding' THEN EMFFormFinGridSummaryLineItem.Description WHEN 'Business Partner' THEN EMFFormFinGridSummaryLineItem.Description WHEN 'Transition' THEN EMFFormFinGridSummaryLineItem.Description WHEN 'TOTAL NET EXPENSE' THEN EMFFormFinGridSummaryLineItem.Description WHEN 'Total Expense Summary' THEN EMFFormFinGridSummaryLineItem.Description WHEN 'Corporate Initiative' THEN EMFFormFinGridSummaryLineItem.Description ELSE 'User Entered' END ELSE CASE EMFFormFinGridSummaryLineItem.LineNumber WHEN 5 THEN 'User Entered' ELSE EMFFormFinGridSummaryLineItem.Description END END"/>
+        </field>
+        <field name="LineType.Details">
+            <aqlMapping selectField="EMFFormFinGridSummaryLineItem.Description"/>
+        </field>
+        <field name="ApprovedDate.Day">
+            <aqlMapping selectField="EMFForm.ApprovedDate"/>
+        </field>
+        <field name="Requester.UserId">
+            <aqlMapping selectField="Requester.UniqueName"/>
+        </field>
+        <field name="Requester.PasswordAdapter">
+            <aqlMapping selectField="Requester.PasswordAdapter"/>
+        </field>
+        <field name="ProjectName">
+            <aqlMapping selectField="EMFForm.Name"/>
+        </field>
+        <field name="ProjectDescription">
+            <aqlMapping selectField="EMFForm.ProjectDescription"/>
+        </field>
+        <field name="ProjectManager">
+            <aqlMapping selectField="EMFForm.ProjectManager"/>
+        </field>
+        <field name="PurchaseReason">
+            <aqlMapping selectField="PurchaseReason.Name"/>
+        </field>
+        <field name="SupplierName">
+            <aqlMapping selectField="EMFForm.SupplierName"/>
+        </field>
+        <field name="ClarityId">
+            <aqlMapping selectField="EMFForm.ClarityNumber"/>
+        </field>
+        <field name="HostName">
+            <aqlMapping selectField="EMFForm.HostName"/>
+        </field>
+        <field name="EMFType">
+            <aqlMapping selectField="EMFForm.EMFType.UniqueName"/>
+        </field>
+        <field name="HistoricCompany">
+            <aqlMapping selectField="HistoricCompany.Name"/>
+        </field>
+        <field name="HistoricCostCenter">
+            <aqlMapping selectField="HistoricCostCenter.Name.PrimaryString"/>
+        </field>
+    </fieldMappings>
+</dataLoad>
+
+
+<derivedDataLoad name="BOABuyerEMFExpenseSummaryCurrentYearAmountLoad" extendsLoad="BOABuyerEMFExpenseSummaryLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridSummaryLineItem.CurrentAmount  
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="Amount.Amount"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseSummaryYear2AmountLoad" extendsLoad="BOABuyerEMFExpenseSummaryLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridSummaryLineItem.Year2Amount  
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="Amount.Amount"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+1"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseSummaryYear3AmountLoad" extendsLoad="BOABuyerEMFExpenseSummaryLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridSummaryLineItem.Year3Amount  
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="Amount.Amount"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+2"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseSummaryYear4AmountLoad" extendsLoad="BOABuyerEMFExpenseSummaryLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridSummaryLineItem.Year4Amount  
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="Amount.Amount"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+3"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseSummaryYear5AmountLoad" extendsLoad="BOABuyerEMFExpenseSummaryLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridSummaryLineItem.Year5Amount  
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="Amount.Amount"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+4"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+<derivedDataLoad name="BOABuyerEMFExpenseSummaryYear6AmountLoad" extendsLoad="BOABuyerEMFExpenseSummaryLoadBase">
+    <inLoadStages>
+        <inAqlStage appendToFromClause="JOIN ariba.basic.core.Money as Amount USING EMFFormFinGridSummaryLineItem.Year6Amount  
+				JOIN ariba.basic.core.Currency as AmountCurr USING Amount.Currency"/>
+    </inLoadStages>
+    <fieldMappings>
+        <field name="Amount.Amount">
+            <aqlMapping selectField="Amount.Amount"/>
+        </field>
+        <field name="Amount.Currency">
+            <aqlMapping selectField="AmountCurr.UniqueName"/>
+        </field>
+        <field name="AmountYear">
+            <aqlMapping selectField="Year(EMFForm.CreateDate)+5"/>
+        </field>
+    </fieldMappings>
+</derivedDataLoad>
+</allDataLoads>
